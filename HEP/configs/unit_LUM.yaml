@@ -27,9 +27,6 @@ new_size: 64                             # first resize the shortest image side 
 crop_image_height: 64                      # random crop image of this height
 crop_image_width: 64                      # random crop image of this width
 
-train_root: /content/HE/LOL_dataset/train_x
-val_root: /content/HE/LOL_dataset/test_x
-gt_root: /content/HE/LOL_dataset/test_gt
-# train_root: /content/drive/MyDrive/LOL_dataset/train_x
-# val_root: /content/drive/MyDrive/LOL_dataset/test_x
-# gt_root: /content/drive/MyDrive/LOL_dataset/test_gt
+train_root: /content/drive/MyDrive/LOL_dataset/train_x
+val_root: /content/drive/MyDrive/LOL_dataset/test_x
+gt_root: /content/drive/MyDrive/LOL_dataset/test_gt
