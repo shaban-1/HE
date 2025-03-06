@@ -10,9 +10,15 @@ class SingleDatasetFromFolder(data.Dataset):
         self.image_filenames_x = [os.path.join(x_dir, x) for x in os.listdir(x_dir) if is_image_file(x)]
         self.image_filenames_gt = [os.path.join(gt_dir, x) for x in os.listdir(gt_dir) if is_image_file(x)]
 
+        if len(self.image_filenames_x) != len(self.image_filenames_gt):
+            raise ValueError("Number of low-light and ground truth images must be the same.")
+
     def __getitem__(self, index):
-        x_image = Image.open(self.image_filenames_x[index])
-        gt_image = Image.open(self.image_filenames_gt[index])
+        x_image = Image.open(self.image_filenames_x[index]).convert('RGB')
+        gt_image = Image.open(self.image_filenames_gt[index]).convert('RGB')
+        if x_image.size != gt_image.size:
+            raise ValueError(f"Image sizes do not match: {x_image.size} vs {gt_image.size}")
+
         return ToTensor()(x_image), ToTensor()(gt_image)
 
     def __len__(self):

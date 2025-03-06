@@ -1,24 +1,29 @@
-from __future__ import print_function
-from utils import get_config
-from trainer import UNIT_Trainer
+import warnings
+import os
 import argparse
 import torchvision.utils as vutils
 import sys
 import torch
-import os
+import torchvision.utils as vutils
+import numpy as np
+import cv2
+import matplotlib.pyplot as plt
 from torchvision import transforms
 from PIL import Image
+from utils import get_config
+from trainer import UNIT_Trainer
 from models.LUM_model import DecomNet
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--denoise_config', type=str, default='./configs/unit_NDM.yaml', help="denoise net configuration")
-parser.add_argument('--light_config', type=str, default='configs/unit_LUM.yaml', help='Path to the config file.')
-parser.add_argument('--input_folder', type=str, default='./test_images', help="input image path")
-parser.add_argument('--output_folder', type=str, default='./NDM_results', help="output image path")
-parser.add_argument('--denoise_checkpoint', type=str, default='./checkpoints/NDM_LOL.pt', help="checkpoint of denoise")
-parser.add_argument('--light_checkpoint', type=str, default='./checkpoints/LUM_LOL.pth', help="checkpoint of light")
+parser.add_argument('--denoise_config', type=str, default='./configs/unit_NDM.yaml')
+parser.add_argument('--light_config', type=str, default='configs/unit_LUM.yaml')
+parser.add_argument('--input_folder', type=str, default='./test_images')
+parser.add_argument('--output_folder', type=str, default='./NDM_results')
+parser.add_argument('--denoise_checkpoint', type=str, default='./NDM_checkpoint/NDM_Eng.pt')
+parser.add_argument('--light_checkpoint', type=str, default='./light/outputs/checkpoints_light/LUM_100.pth')
 opts = parser.parse_args()
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+warnings.filterwarnings("ignore", category=UserWarning)
 
 if not os.path.exists(opts.output_folder):
     os.makedirs(opts.output_folder)
@@ -44,28 +49,47 @@ light.load_state_dict(state_dict)
 light.cuda()
 light.eval()
 
+def apply_clahe(image):
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    return clahe.apply(image)
 
-if not os.path.exists(opts.input_folder):
-    raise Exception('input path is not exists!')
+def display_all_results(original, clahe_image, model_output, title="Comparison"):
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+    images = [original, clahe_image, model_output]
+    titles = ["Original", "CLAHE", "Model Output"]
+    for i in range(3):
+        axes[0, i].imshow(images[i], cmap='gray')
+        axes[0, i].set_title(titles[i])
+        axes[0, i].axis('off')
+    for i in range(3):
+        axes[1, i].hist(images[i].ravel(), bins=256, range=[0, 256], color='gray')
+        axes[1, i].set_title(f"Histogram ({titles[i]})")
+        axes[1, i].set_xlim([0, 256])
+    plt.tight_layout()
+    plt.show()
 imglist = os.listdir(opts.input_folder)
 transform = transforms.Compose([transforms.ToTensor()])
 
 for i, file in enumerate(imglist):
-    print(file)
-    with torch.no_grad():
-        filepath = opts.input_folder + '/' + file
-        image = transform(Image.open(filepath).convert('RGB')).unsqueeze(0).cuda()
-        # Start testing
-        h, w = image.size(2), image.size(3)
-        pad_h = h % 4
-        pad_w = w % 4
-        image = image[:, :, 0:h - pad_h, 0:w - pad_w]
-        r_low, i_low = light(image)
-        content = encode(r_low)
-        outputs = decode(content)
-        if not os.path.exists(opts.output_folder):
-            os.makedirs(opts.output_folder)
-        outputs_back = outputs.clone()
-        name = os.path.splitext(file)[0]
-        path = os.path.join(opts.output_folder, name + '.png')
-        vutils.save_image(outputs.data, path)
+    print(f"Processing {file}...")
+    filepath = os.path.join(opts.input_folder, file)
+    image = transform(Image.open(filepath).convert('RGB')).unsqueeze(0).cuda()
+    h, w = image.size(2), image.size(3)
+    pad_h, pad_w = h % 4, w % 4
+    image = image[:, :, :h - pad_h, :w - pad_w]
+    r_low, _ = light(image)
+    content = encode(r_low)
+    outputs = decode(content)
+    original_image = (image.squeeze().cpu().numpy().transpose(1, 2, 0) * 255).astype(np.uint8)
+    original_gray = cv2.cvtColor(original_image, cv2.COLOR_RGB2GRAY)
+    model_output = (r_low.squeeze().cpu().detach().numpy() * 255).astype(np.uint8)
+    if len(model_output.shape) == 3:
+        model_output = cv2.cvtColor(model_output.transpose(1, 2, 0), cv2.COLOR_RGB2GRAY)
+
+    clahe_image = apply_clahe(original_gray)
+
+    display_all_results(original_gray, clahe_image, model_output, title=file)
+
+    name = os.path.splitext(file)[0]
+    path = os.path.join(opts.output_folder, name + '.png')
+    vutils.save_image(r_low.data, path)

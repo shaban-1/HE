@@ -1,3 +1,4 @@
+import math
 from models.NDM_model import vgg_19
 from PIL import Image
 from torch.autograd import Variable
@@ -141,19 +142,30 @@ def get_data_loader_folder(input_folder, batch_size, train, new_size=None,
 
     return loader
 
+import torch.nn.functional as F
 
-def write_images(image_outputs, display_image_num, file_name):
-    image_outputs = [images.expand(-1, 3, -1, -1) for images in image_outputs]  # expand gray-scale images to 3 channels
-    image_tensor = torch.cat([images[:display_image_num] for images in image_outputs], 0)
+def write_images(image_outputs, display_image_num, file_name, target_size=(400, 400)):
+    # Expand grayscale images to 3 channels
+    image_outputs = [images.expand(-1, 3, -1, -1) for images in image_outputs]
+
+    # Resize images to target size (400x400 or whatever you choose)
+    image_outputs_resized = [
+        F.interpolate(images, size=target_size, mode='bilinear', align_corners=False)
+        for images in image_outputs
+    ]
+
+    # Concatenate images (ensure that all are the same size now)
+    image_tensor = torch.cat([images[:display_image_num] for images in image_outputs_resized], 0)
+
+    # Create image grid and save it
     image_grid = vutils.make_grid(image_tensor.data, nrow=display_image_num, padding=0, normalize=False)
     vutils.save_image(image_grid, file_name, nrow=1)
 
-
 def write2images(image_outputs, display_image_num, image_directory, postfix):
     n = len(image_outputs)
+    # Create and save 'gen_a2b' and 'gen_b2a' images with resized images
     write_images(image_outputs[0:n // 2], display_image_num, '%s/gen_a2b_%s.jpg' % (image_directory, postfix))
     write_images(image_outputs[n // 2:n], display_image_num, '%s/gen_b2a_%s.jpg' % (image_directory, postfix))
-
 
 def write_one_row_html(html_file, iterations, img_filename, all_size):
     html_file.write("<h3>iteration [%d] (%s)</h3>" % (iterations, img_filename.split('/')[-1]))
@@ -262,6 +274,41 @@ def weights_init(init_type='gaussian'):
 
     return init_fun
 
+def histeq_gray(image, number_bins=256):
+    histogram, bins = np.histogram(image.flatten(), number_bins, density=True)
+    cdf = histogram.cumsum()
+    cdf = 255 * cdf / cdf[-1]
+    image_equalized = np.interp(image.flatten(), bins[:-1], cdf)
+    return image_equalized.reshape(image.shape)
+
+def data_augmentation_gray(image, mode):
+    if mode == 0:
+        # original
+        return image
+    elif mode == 1:
+        # flip up and down
+        return np.flipud(image)
+    elif mode == 2:
+        # rotate counterwise 90 degree
+        return np.rot90(image)
+    elif mode == 3:
+        # rotate 90 degree and flip up and down
+        image = np.rot90(image)
+        return np.flipud(image)
+    elif mode == 4:
+        # rotate 180 degree
+        return np.rot90(image, k=2)
+    elif mode == 5:
+        # rotate 180 degree and flip
+        image = np.rot90(image, k=2)
+        return np.flipud(image)
+    elif mode == 6:
+        # rotate 270 degree
+        return np.rot90(image, k=3)
+    elif mode == 7:
+        # rotate 270 degree and flip
+        image = np.rot90(image, k=3)
+        return np.flipud(image)
 
 def data_augmentation(image, mode):
     if mode == 0:

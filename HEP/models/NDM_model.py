@@ -3,7 +3,7 @@ from torch.autograd import Variable
 import torch
 import torch.nn.functional as F
 import torchvision
-from torch.nn.utils import weight_norm
+from torch.nn.utils import weight_norm, spectral_norm
 
 try:
     from itertools import izip as zip

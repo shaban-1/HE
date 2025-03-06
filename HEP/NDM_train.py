@@ -6,22 +6,24 @@ import torch.backends.cudnn as cudnn
 import argparse
 import skimage.metrics
 import numpy as np
+from piq import psnr
 from torch.utils.data import DataLoader
 from utils import write_html, write_loss, get_config, write2images, get_all_data_loaders
 from torch.utils.tensorboard import SummaryWriter
 from models.LUM_model import DecomNet
 from trainer import UNIT_Trainer
 
-# parse options
+# Parse options
 parser = argparse.ArgumentParser(description='DenoiseNet args setting')
 parser.add_argument('--denoise_config', type=str, default='configs/unit_NDM.yaml', help='Path to the config file.')
 parser.add_argument('--light_config', type=str, default='configs/unit_LUM.yaml', help='Path to the config file.')
 parser.add_argument('--output_path', type=str, default='./denoise', help="outputs path")
 parser.add_argument("--resume", action="store_true")
 parser.add_argument('--trainer', type=str, default='UNIT', help="UNIT")
-parser.add_argument('--light_checkpoint', type=str, default='./checkpoints/LUM_LOL.pth',
+parser.add_argument('--light_checkpoint', type=str, default='./light/outputs/checkpoints_light/LUM_100.pth',
                     help="checkpoint of light")
 opts = parser.parse_args()
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
@@ -73,8 +75,11 @@ def main():
     count = 0
     print('start training')
     iterations = trainer.resume(checkpoint_directory, hyperparameters=denoise_config) if opts.resume else 0
-    while True:
-        for it, (images_x, images_y, val_x, val_y) in enumerate(zip(train_loader_x, train_loader_y, test_loader_x, test_loader_y)):
+    while iterations < max_iter:
+        for it, (images_x, images_y, val_x, val_y) in enumerate(
+                zip(train_loader_x, train_loader_y, test_loader_x, test_loader_y)):
+            print(f"Iteration {iterations + 1}:")
+
             dataX, dataY = images_x.cuda().detach(), images_y.cuda().detach()
             valX, valY = val_x.cuda().detach(), val_y.cuda().detach()
             dataX, _ = light(dataX)

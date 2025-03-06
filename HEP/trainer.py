@@ -198,6 +198,8 @@ class UNIT_Trainer(nn.Module):
             cont_x = self.gen_x.encode_cont(x[i].unsqueeze(0))
             cont_y = self.gen_y.encode_cont(y[i].unsqueeze(0))
             noise_x = self.gen_x.encode_noise(x[i].unsqueeze(0))
+            cont_y = torch.nn.functional.interpolate(cont_y, size=noise_x.shape[2:], mode='bilinear',
+                                                     align_corners=False)
 
             h_y2x_cont = torch.cat((cont_y, noise_x), 1)
             h_x2x_cont = torch.cat((cont_x, noise_x), 1)
