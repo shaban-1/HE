@@ -1,5 +1,4 @@
 import warnings
-
 import torch
 import os
 import time
@@ -13,6 +12,7 @@ from utils import get_config, write_images, data_augmentation, load_images, hist
 from models.LUM_model import DecomNet
 from models.loss import IS_loss, Perceptual_loss
 from model_dataset import SingleDatasetFromFolder
+from tqdm import tqdm  # Импортируем tqdm для progress bar
 
 # Функция для проверки и преобразования изображения
 def preprocess_image(image):
@@ -27,15 +27,16 @@ parser = argparse.ArgumentParser(description='Light args setting')
 parser.add_argument('--light_config', type=str, default='configs/unit_LUM.yaml', help='Path to the config file.')
 parser.add_argument('--output_path', type=str, default='./light', help="outputs path")
 parser.add_argument("--resume", action="store_true")
-
 opts = parser.parse_args()
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 warnings.filterwarnings("ignore", category=UserWarning, module="torchvision.models._utils")
 
-
 def main():
-    # load train setting
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    print("Using device:", device)
+
     light_config = get_config(opts.light_config)
     max_iter = light_config['max_iter']
     display_size = light_config['display_size']
@@ -46,54 +47,43 @@ def main():
     beta1 = light_config['beta1']
     beta2 = light_config['beta2']
 
-    # model set and data loader
-    light = DecomNet(light_config)
+    light = DecomNet(light_config).to(device)
     if torch.cuda.is_available():
-        light.cuda(light_config['gpuID'])
-        torch.nn.DataParallel(light)
+        light = torch.nn.DataParallel(light)
         cudnn.benchmark = True
 
-    # set output folder
     output_directory = os.path.join(opts.output_path + "/outputs")
-
-    # set checkpoint folder
     checkpoint_directory = os.path.join(output_directory, 'checkpoints_light')
     if not os.path.exists(checkpoint_directory):
         print("Creating directory: {}".format(checkpoint_directory))
         os.makedirs(checkpoint_directory)
 
-    # set image folder
     image_directory = os.path.join(output_directory, 'images')
     if not os.path.exists(image_directory):
         print("Creating directory: {}".format(image_directory))
         os.makedirs(image_directory)
 
-    # start training
     print('start training')
 
-    # train set
     optim = torch.optim.Adam(light.parameters(), lr=learning_rate, weight_decay=light_config['weight_decay'],
                              betas=(beta1, beta2))
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optim, milestones=[20, 40], gamma=0.1)
     criterion_I = IS_loss()
     criterion_per = Perceptual_loss()
     start_time = time.time()
-    vgg = load_vgg19(20)
-    if torch.cuda.is_available():
-        vgg.cuda(light_config['gpuID'])
+    vgg = load_vgg19(20).to(device)
     vgg.eval()
     for param in vgg.parameters():
         param.requires_grad = False
 
-    # Load training data
     train_low_data = []
     train_low_data_hist = []
-    train_low_data_names = glob(os.path.join(light_config['train_root'], '*.*'))  # Поддержка разных форматов
+    train_low_data_names = glob(os.path.join(light_config['train_root'], '*.*'))
     train_low_data_names.sort()
     print('[*] Number of training data: %d' % len(train_low_data_names))
     for idx in range(len(train_low_data_names)):
         low_im = load_images(train_low_data_names[idx])
-        low_im = preprocess_image(low_im)  # Обработка изображения
+        low_im = preprocess_image(low_im)
         train_low_data.append(low_im)
         train_hist_data = histeq(low_im)
         train_low_data_hist.append(train_hist_data)
@@ -101,13 +91,12 @@ def main():
     numBatch = len(train_low_data) // int(batch_size)
     image_id = 0
     psnr = 0
-    mssim = 0
     ssim = 0
     count = 0
 
     for epoch in range(max_iter):
-        for batch_id in range(numBatch):
-            # generate data for a batch
+        epoch_pbar = tqdm(range(numBatch), desc=f"Epoch {epoch+1}/{max_iter}", unit="batch")
+        for batch_id in epoch_pbar:
             batch_input_low = np.zeros((batch_size, height, width, 3), dtype="float32")
             batch_input_low_hist = np.zeros((batch_size, height, width, 3), dtype="float32")
 
@@ -116,19 +105,19 @@ def main():
                 x = np.random.randint(0, h - height)
                 y = np.random.randint(0, w - width)
                 rand_mode = np.random.randint(0, 7)
-                batch_input_low[patch_id, :, :, :] = data_augmentation(
+                batch_input_low[patch_id] = data_augmentation(
                     train_low_data[image_id][x: x + height, y: y + width, :], rand_mode)
-                batch_input_low_hist[patch_id, :, :, :] = data_augmentation(
+                batch_input_low_hist[patch_id] = data_augmentation(
                     train_low_data_hist[image_id][x: x + height, y: y + width, :], rand_mode)
                 image_id = (image_id + 1) % len(train_low_data)
                 if image_id == 0:
                     tmp = list(zip(train_low_data, train_low_data))
-                    np.random.shuffle(list(tmp))
+                    np.random.shuffle(tmp)
                     train_low_data, _ = zip(*tmp)
 
             optim.zero_grad()
-            low_im = torch.from_numpy(batch_input_low).cuda().permute(0, 3, 1, 2)
-            low_im_hist = torch.from_numpy(batch_input_low_hist).cuda().permute(0, 3, 1, 2)
+            low_im = torch.from_numpy(batch_input_low).to(device).permute(0, 3, 1, 2)
+            low_im_hist = torch.from_numpy(batch_input_low_hist).to(device).permute(0, 3, 1, 2)
             r_low, i_low = light(low_im)
             i_low_3 = torch.cat((i_low, i_low, i_low), 1)
             recon_loss = torch.mean(torch.abs((r_low * i_low_3) - low_im))
@@ -137,8 +126,8 @@ def main():
             loss.backward()
             optim.step()
 
-            print("Epoch: [%2d] [%4d/%4d] time: %4.4f, loss: %.6f, lr: %.6f" % (
-                epoch + 1, batch_id + 1, numBatch, time.time() - start_time, loss, optim.param_groups[0]['lr']))
+            # Обновляем progress bar с текущими метриками
+            epoch_pbar.set_postfix(loss=loss.item(), lr=optim.param_groups[0]['lr'])
 
         scheduler.step()
 
@@ -155,21 +144,18 @@ def main():
                 with torch.no_grad():
                     for idx, (val_x, val_gt) in enumerate(val_loader):
                         print(f"Processing validation batch {idx + 1}/{len(val_loader)}...")
-                        val_x = val_x.cuda()
-                        val_gt = val_gt.cuda()
+                        val_x = val_x.to(device)
+                        val_gt = val_gt.to(device)
                         r_x, i_x = light(val_x)
 
-                        # Преобразование изображений для метрик
                         val_gt_m = val_gt.squeeze(0).permute(1, 2, 0).cpu().numpy()
                         val_gt_m = (val_gt_m * 255.0).round().astype(np.uint8)
                         r_x_m = r_x.squeeze(0).permute(1, 2, 0).cpu().numpy()
                         r_x_m = (r_x_m * 255.0).round().astype(np.uint8)
 
-                        # Обрезка размеров для совместимости
                         w, h, _ = r_x_m.shape
                         val_gt_m = val_gt_m[0:w, 0:h, :]
 
-                        # Вычисление метрик
                         psnr += skimage.metrics.peak_signal_noise_ratio(r_x_m, val_gt_m)
                         ssim += skimage.metrics.structural_similarity(r_x_m, val_gt_m, multichannel=True,
                                                                       channel_axis=2)
@@ -184,7 +170,6 @@ def main():
                 import traceback
                 traceback.print_exc()
 
-            # Явный переход к следующей эпохе
             print(f"Epoch {epoch + 1} completed. Moving to the next epoch...")
 
         if (epoch + 1) % light_config['snapshot_save_iter'] == 0:

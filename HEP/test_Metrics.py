@@ -38,3 +38,4 @@ if __name__ == "__main__":
     testfolder = './NDM_LOL/'
     gtfolder = '/home/dancer/LOL/test_gt'
     test(testfolder, gtfolder)
+

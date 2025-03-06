@@ -3,7 +3,6 @@ import torch.utils.data as data
 from PIL import Image
 from torchvision.transforms import ToTensor
 
-
 class SingleDatasetFromFolder(data.Dataset):
     def __init__(self, x_dir, gt_dir):
         super(SingleDatasetFromFolder, self).__init__()

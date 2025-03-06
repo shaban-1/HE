@@ -7,6 +7,18 @@
 * PyTorch>=1.0
 * NVIDIA GPU+CUDA
 
+## Установка зависимостей
+
+Для установки всех необходимых библиотек выполните следующую команду, если нет видеокарты:
+
+```bash
+pip install albumentations==1.4.13 matplotlib==3.9.1.post1 numpy==1.26.4 open3d==0.18.0 opencv-python==4.10.0.84 pandas==2.2.2 pillow==10.4.0 pytorch-lightning==2.4.0 scikit-image==0.24.0 scikit-learn==1.5.1 scipy==1.11.0 torch==2.3.0+cpu torchvision==0.18.0+cpu torchmetrics==1.4.1 albucore==0.0.16 -f https://download.pytorch.org/whl/torch_stable.html matplotlib jupyterlab
+```
+Для установки всех необходимых библиотек выполните следующую команду, если есть видеокарта:
+```bash
+pip install albumentations==1.4.13 matplotlib==3.9.1.post1 numpy==1.26.4 open3d==0.18.0 opencv-python==4.10.0.84 pandas==2.2.2 pillow==10.4.0 pytorch-lightning==2.4.0 scikit-image==0.24.0 scikit-learn==1.5.1 scipy==1.11.0 torch==2.3.0+cu121 torchvision==0.18.0+cu121 torchmetrics==1.4.1 albucore==0.0.16 -f https://download.pytorch.org/whl/torch_stable.html matplotlib jupyterlab
+```
+
 ## Training process
 
 The original LOL dataset can be downloaded from [here](https://daooshee.github.io/BMVC2018website/).

@@ -16,10 +16,10 @@ from utils import vgg_preprocess
 
 
 def gradient(input_tensor, direction):
+    device = input_tensor.device
     weights = torch.tensor([[0., 0.],
-                            [-1., 1.]]
-                           ).cuda()
-    weights_x = weights.view(1, 1, 2, 2).repeat(1, 1, 1, 1)
+                            [-1., 1.]], device=device)
+    weights_x = weights.view(1, 1, 2, 2)
     weights_y = torch.transpose(weights_x, 2, 3)
 
     if direction == "x":
@@ -39,10 +39,12 @@ class R_Smooth_Loss(nn.Module):
         super(R_Smooth_Loss, self).__init__()
 
     def forward(self, input_R):
-        rgb_weights = torch.Tensor([0.2990, 0.5870, 0.1140]).cuda()
+        device = input_R.device
+        rgb_weights = torch.Tensor([0.2990, 0.5870, 0.1140]).to(device)
         input_R = torch.tensordot(input_R, rgb_weights, dims=([1], [-1]))
         input_R = torch.unsqueeze(input_R, 1)
-        loss_R_smooth = torch.mean(torch.abs(gradient(input_R, "x")) + torch.abs(gradient(input_R, "y")))
+        loss_R_smooth = torch.mean(torch.abs(gradient(input_R, "x")) +
+                                   torch.abs(gradient(input_R, "y")))
         return loss_R_smooth
 
 
@@ -51,7 +53,8 @@ class Smooth_loss(nn.Module):
         super(Smooth_loss, self).__init__()
 
     def forward(self, input_I, input_R):
-        rgb_weights = torch.Tensor([0.2990, 0.5870, 0.1140]).cuda()
+        device = input_R.device
+        rgb_weights = torch.Tensor([0.2990, 0.5870, 0.1140]).to(device)
         input_gray = torch.tensordot(input_R, rgb_weights, dims=([1], [-1]))
         input_gray = torch.unsqueeze(input_gray, 1)
         return torch.mean(gradient(input_I, "x") * torch.exp(-10 * gradient(input_gray, "x")) +
@@ -63,12 +66,13 @@ class IS_loss(nn.Module):
         super(IS_loss, self).__init__()
 
     def forward(self, input_I, input_im):
-        rgb_weights = torch.Tensor([0.2990, 0.5870, 0.1140]).cuda()
+        device = input_im.device
+        rgb_weights = torch.Tensor([0.2990, 0.5870, 0.1140]).to(device)
         input_gray = torch.tensordot(input_im, rgb_weights, dims=([1], [-1]))
         input_gray = torch.unsqueeze(input_gray, 1)
         low_gradient_x = gradient(input_I, "x")
         input_gradient_x = gradient(input_gray, "x")
-        k = torch.full(input_gradient_x.shape, 0.01).cuda()
+        k = torch.full(input_gradient_x.shape, 0.01, device=device)
         x_loss = torch.abs(torch.div(low_gradient_x, torch.max(input_gradient_x, k)))
         low_gradient_y = gradient(input_I, "y")
         input_gradient_y = gradient(input_gray, "y")
@@ -80,18 +84,16 @@ class IS_loss(nn.Module):
 class Exposure_control_loss(nn.Module):
     def __init__(self, patch_size, mean_val):
         super(Exposure_control_loss, self).__init__()
-        # print(1)
         self.pool = nn.AvgPool2d(patch_size)
         self.mean_val = mean_val
 
     def forward(self, x):
-        b, c, h, w = x.shape
+        device = x.device
         x = torch.mean(x, 1, keepdim=True)
         mean = self.pool(x)
-
-        d = torch.mean(torch.pow(mean - torch.FloatTensor([self.mean_val]).cuda(), 2))
+        # Вместо .cuda() используем .to(device)
+        d = torch.mean(torch.pow(mean - torch.FloatTensor([self.mean_val]).to(device), 2))
         return d
-
 
 class Color_constancy_loss(nn.Module):
     def __init__(self):

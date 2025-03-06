@@ -10,7 +10,6 @@ import torch.utils.data as data
 import yaml
 import cv2
 import torch.nn.init as init
-import os
 from pylab import *
 from numpy.lib.stride_tricks import as_strided as ast
 
@@ -233,7 +232,8 @@ def vgg_preprocess(batch):
     (r, g, b) = torch.chunk(batch, 3, dim=1)
     batch = torch.cat((b, g, r), dim=1)  # convert RGB to BGR
     batch = batch * 255  # * 0.5  [-1, 1] -> [0, 255]
-    mean = tensor_type(batch.data.size()).cuda()
+    device = batch.device
+    mean = torch.empty(batch.size(), device=device)
     mean[:, 0, :, :] = 103.939
     mean[:, 1, :, :] = 116.779
     mean[:, 2, :, :] = 123.680

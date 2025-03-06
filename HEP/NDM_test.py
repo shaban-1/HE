@@ -1,8 +1,6 @@
 import warnings
 import os
 import argparse
-import torchvision.utils as vutils
-import sys
 import torch
 import torchvision.utils as vutils
 import numpy as np
@@ -19,9 +17,10 @@ parser.add_argument('--denoise_config', type=str, default='./configs/unit_NDM.ya
 parser.add_argument('--light_config', type=str, default='configs/unit_LUM.yaml')
 parser.add_argument('--input_folder', type=str, default='./test_images')
 parser.add_argument('--output_folder', type=str, default='./NDM_results')
-parser.add_argument('--denoise_checkpoint', type=str, default='./NDM_checkpoint/NDM_Eng.pt')
+parser.add_argument('--denoise_checkpoint', type=str, default='./NDM_checkpoint/NDM_LOL.pt')
 parser.add_argument('--light_checkpoint', type=str, default='./light/outputs/checkpoints_light/LUM_100.pth')
 opts = parser.parse_args()
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -32,21 +31,19 @@ if not os.path.exists(opts.output_folder):
 denoise_config = get_config(opts.denoise_config)
 
 # Setup model and data loaderoots.trainer == 'UNIT':
-DN_trainer = UNIT_Trainer(denoise_config)
+DN_trainer = UNIT_Trainer(denoise_config).to(device)
 state_dict = torch.load(opts.denoise_checkpoint, map_location='cpu')
 DN_trainer.gen_x.load_state_dict(state_dict['x'])
 DN_trainer.gen_y.load_state_dict(state_dict['y'])
-DN_trainer.cuda()
 DN_trainer.eval()
 encode = DN_trainer.gen_x.encode_cont  # encode function
 decode = DN_trainer.gen_y.decode_cont  # decode function
 
 # pre-trained model set
 light_config = get_config(opts.light_config)
-light = DecomNet(light_config)
+light = DecomNet(light_config).to(device)
 state_dict = torch.load(opts.light_checkpoint, map_location='cpu')
 light.load_state_dict(state_dict)
-light.cuda()
 light.eval()
 
 def apply_clahe(image):
@@ -73,7 +70,9 @@ transform = transforms.Compose([transforms.ToTensor()])
 for i, file in enumerate(imglist):
     print(f"Processing {file}...")
     filepath = os.path.join(opts.input_folder, file)
-    image = transform(Image.open(filepath).convert('RGB')).unsqueeze(0).cuda()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    image = transform(Image.open(filepath).convert('RGB')).unsqueeze(0).to(device)
+
     h, w = image.size(2), image.size(3)
     pad_h, pad_w = h % 4, w % 4
     image = image[:, :, :h - pad_h, :w - pad_w]

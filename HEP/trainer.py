@@ -8,7 +8,6 @@ from models.GaussianSmoothLayer import GaussionSmoothLayer, GradientLoss
 from models.loss import Exposure_control_loss, Color_constancy_loss
 import os
 
-
 ##################################################################################
 # UNIT
 ##################################################################################
@@ -50,7 +49,9 @@ class UNIT_Trainer(nn.Module):
 
         # initialize the blur network
         self.BGBlur_kernel = [5, 9, 15]
-        self.BlurNet = [GaussionSmoothLayer(3, k_size, 25).cuda(self.gpu_id) for k_size in self.BGBlur_kernel]
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.BlurNet = [GaussionSmoothLayer(3, k_size, 25).to(device) for k_size in self.BGBlur_kernel]
+
         self.BlurWeight = [0.25, 0.5, 1]
         self.Gradient = GradientLoss(3, 3)
 
